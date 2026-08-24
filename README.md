@@ -143,8 +143,9 @@ environment:
   - EXTRA_ARGS=--parallel 1 --split-mode none --no-mmap
 ```
 
-The image carries a local Qwen3.5 FastMTP port on top of the recorded upstream
-revision. `just check` tracks both revisions and rebuilds if either changes.
+The image ships with an adapted [HauhauCS FastMTP patch](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF)
+for Qwen3.5, applied on top of the recorded upstream revision. `just check`
+tracks both the upstream revision and the patch, and rebuilds if either changes.
 
 One trap worth naming: on `:cuda` the weights live in VRAM, so the container's RAM footprint is small and a tight memory limit looks fine. Move that same model to `:cpu` and the weights land in host RAM — with `--mlock`, permanently — and the limit you never thought about becomes an OOM kill at load. Size it for the model, not for what the GPU was politely hiding from you.
 
