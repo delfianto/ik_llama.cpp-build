@@ -130,8 +130,21 @@ services:
 
 For `:cpu`, same block minus the `deploy:` section. See `docker-compose.example.yml` for a full stack with OpenWebUI.
 
-The [HauhauCS Qwen3.8 FastMTP release](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF)
-uses the same variables. Pair any compatible target quant with its shared 32K
+Qwen3.8 FastMTP support is experimental and disabled in normal builds. The
+adapted patch can produce unbounded or degraded output, so do not use it when
+output correctness matters. To opt in, build with:
+
+```bash
+EXPERIMENTAL_FASTMTP=1 just cuda
+# Arch package: EXPERIMENTAL_FASTMTP=1 just pkg
+```
+
+The flag defaults to `0`. `just check` records whether an image is patched and
+rebuilds when the selected mode or patch changes.
+
+The experimental patch is adapted from the
+[HauhauCS Qwen3.8 FastMTP release](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF).
+With an opted-in build, pair any compatible target quant with its shared 32K
 companion:
 
 ```yaml
@@ -142,10 +155,6 @@ environment:
   - CTX_SIZE=204800
   - EXTRA_ARGS=--parallel 1 --split-mode none --no-mmap
 ```
-
-The image ships with an adapted [HauhauCS FastMTP patch](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF)
-for Qwen3.5, applied on top of the recorded upstream revision. `just check`
-tracks both the upstream revision and the patch, and rebuilds if either changes.
 
 One trap worth naming: on `:cuda` the weights live in VRAM, so the container's RAM footprint is small and a tight memory limit looks fine. Move that same model to `:cpu` and the weights land in host RAM — with `--mlock`, permanently — and the limit you never thought about becomes an OOM kill at load. Size it for the model, not for what the GPU was politely hiding from you.
 

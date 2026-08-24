@@ -1,5 +1,6 @@
 # Maintainer: Bink
 : ${aur_llamacpp_build_universal:=false}
+: ${EXPERIMENTAL_FASTMTP:=0}
 pkgname=ik-llama.cpp-cuda-git
 _pkgname="ik_llama.cpp"
 pkgver=t0002.r1026.8337e4cd3
@@ -48,8 +49,22 @@ pkgver() {
 
 prepare() {
   cd "${_pkgname}" || exit
-  git apply --check ../fastmtp-qwen35.patch
-  git apply ../fastmtp-qwen35.patch
+  # makepkg can reuse srcdir; remove a patch left by an earlier opted-in build
+  # before applying the mode selected for this invocation.
+  if git apply --reverse --check ../fastmtp-qwen35.patch >/dev/null 2>&1; then
+    git apply --reverse ../fastmtp-qwen35.patch
+  fi
+  case "${EXPERIMENTAL_FASTMTP}" in
+    0) printf '%s\n' 'Qwen3.8 FastMTP patch disabled' ;;
+    1)
+      git apply --check ../fastmtp-qwen35.patch
+      git apply ../fastmtp-qwen35.patch
+      ;;
+    *)
+      printf '%s\n' 'EXPERIMENTAL_FASTMTP must be 0 or 1' >&2
+      return 2
+      ;;
+  esac
 
   # Version info is not passed on the cmake command line: cmake/build-info.cmake
   # sets BUILD_NUMBER/BUILD_COMMIT with plain set() calls that shadow the cache,

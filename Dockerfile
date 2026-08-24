@@ -63,8 +63,13 @@ WORKDIR /app
 COPY --from=ikllama . /app
 COPY fastmtp-qwen35.patch /tmp/fastmtp-qwen35.patch
 
-RUN git apply --check /tmp/fastmtp-qwen35.patch && \
-    git apply /tmp/fastmtp-qwen35.patch
+ARG IK_LLAMA_EXPERIMENTAL_FASTMTP=0
+RUN case "${IK_LLAMA_EXPERIMENTAL_FASTMTP}" in \
+      0) echo "Qwen3.8 FastMTP patch disabled" ;; \
+      1) git apply --check /tmp/fastmtp-qwen35.patch && \
+         git apply /tmp/fastmtp-qwen35.patch ;; \
+      *) echo "IK_LLAMA_EXPERIMENTAL_FASTMTP must be 0 or 1" >&2; exit 2 ;; \
+    esac
 
 ARG IK_LLAMA_SHA=unknown
 ARG IK_LLAMA_BUILD_NUMBER=0

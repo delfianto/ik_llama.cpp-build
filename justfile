@@ -11,6 +11,7 @@ image := "ghcr.io/delfianto/ik_llama.cpp"
 fastmtp_patch := "fastmtp-qwen35.patch"
 ref := env("IK_LLAMA_REF", "main")
 force := env("FORCE", "0")
+experimental_fastmtp := env("EXPERIMENTAL_FASTMTP", "0")
 
 _default:
     @just --list --unsorted
@@ -31,7 +32,11 @@ check: fetch
     #!/usr/bin/env bash
     set -euo pipefail
     sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
-    patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1)
+    case "{{ experimental_fastmtp }}" in
+        0) patch_sha=disabled ;;
+        1) patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1) ;;
+        *) echo "EXPERIMENTAL_FASTMTP must be 0 or 1" >&2; exit 2 ;;
+    esac
     desc=$(git -C "{{ mirror }}" log -1 --format='%cr -- %s' "$sha")
     echo "upstream {{ ref }} @ ${sha:0:12}  ($desc)"
     echo
@@ -73,7 +78,11 @@ _build variant: fetch
     #!/usr/bin/env bash
     set -euo pipefail
     sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
-    patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1)
+    case "{{ experimental_fastmtp }}" in
+        0) patch_sha=disabled ;;
+        1) patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1) ;;
+        *) echo "EXPERIMENTAL_FASTMTP must be 0 or 1" >&2; exit 2 ;;
+    esac
     built=$(docker image inspect "{{ image }}:{{ variant }}" \
         --format '{{{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)
     built_patch=$(docker image inspect "{{ image }}:{{ variant }}" \
@@ -85,7 +94,8 @@ _build variant: fetch
     num=$(git -C "{{ mirror }}" rev-list --count "$sha")
     just _materialize "$sha"
     echo "==> building {{ variant }} @ ${sha:0:12} (build number $num)"
-    IK_LLAMA_SHA="$sha" IK_LLAMA_BUILD_NUMBER="$num" IK_LLAMA_PATCH_SHA="$patch_sha" docker buildx bake "{{ variant }}"
+    IK_LLAMA_SHA="$sha" IK_LLAMA_BUILD_NUMBER="$num" IK_LLAMA_PATCH_SHA="$patch_sha" \
+        IK_LLAMA_EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}" docker buildx bake "{{ variant }}"
 
 # Build the CPU image.
 cpu: (_build "cpu")
@@ -98,7 +108,7 @@ all: cpu cuda
 
 # Build the Arch package with makepkg (reuses the same mirror).
 pkg:
-    makepkg -sf --noconfirm
+    EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}" makepkg -sf --noconfirm
 
 # Remove the materialised source tree and build cache (keeps the mirror).
 clean:

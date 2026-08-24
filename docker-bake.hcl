@@ -24,7 +24,11 @@ variable "IK_LLAMA_BUILD_NUMBER" {
 }
 
 variable "IK_LLAMA_PATCH_SHA" {
-  default = "unknown"
+  default = "disabled"
+}
+
+variable "IK_LLAMA_EXPERIMENTAL_FASTMTP" {
+  default = "0"
 }
 
 group "default" {
@@ -41,8 +45,9 @@ target "_common" {
   # znver5 and the CUDA archs are both x86_64-only; never let bake try emulation.
   platforms = ["linux/amd64"]
   args = {
-    IK_LLAMA_SHA          = IK_LLAMA_SHA
-    IK_LLAMA_BUILD_NUMBER = IK_LLAMA_BUILD_NUMBER
+    IK_LLAMA_SHA                  = IK_LLAMA_SHA
+    IK_LLAMA_BUILD_NUMBER         = IK_LLAMA_BUILD_NUMBER
+    IK_LLAMA_EXPERIMENTAL_FASTMTP = IK_LLAMA_EXPERIMENTAL_FASTMTP
   }
   labels = {
     "org.opencontainers.image.source"   = "https://github.com/ikawrakow/ik_llama.cpp"
