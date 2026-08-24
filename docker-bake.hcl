@@ -23,6 +23,10 @@ variable "IK_LLAMA_BUILD_NUMBER" {
   default = "0"
 }
 
+variable "IK_LLAMA_PATCH_SHA" {
+  default = "unknown"
+}
+
 group "default" {
   targets = ["cpu", "cuda"]
 }
@@ -44,6 +48,7 @@ target "_common" {
     "org.opencontainers.image.source"   = "https://github.com/ikawrakow/ik_llama.cpp"
     "org.opencontainers.image.title"    = "ik_llama.cpp"
     "org.opencontainers.image.revision" = IK_LLAMA_SHA
+    "org.opencontainers.image.fastmtp-patch" = IK_LLAMA_PATCH_SHA
   }
 }
 

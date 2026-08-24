@@ -2,7 +2,7 @@
 : ${aur_llamacpp_build_universal:=false}
 pkgname=ik-llama.cpp-cuda-git
 _pkgname="ik_llama.cpp"
-pkgver=t0002.r912.1fddd12b
+pkgver=t0002.r1026.8337e4cd3
 pkgrel=1
 pkgdesc="Port of Facebook's LLaMA model in C/C++ (with NVIDIA CUDA optimizations) - fork by ikawrakow"
 arch=(x86_64 armv7h aarch64)
@@ -32,10 +32,12 @@ provides=("${_pkgname}")
 conflicts=("${_pkgname}" libggml ggml llama.cpp)
 source=(
 "git+https://github.com/ikawrakow/ik_llama.cpp.git"
+fastmtp-qwen35.patch
 llama.cpp.conf
 llama.cpp.service
 )
 sha256sums=('SKIP'
+'a23b628aa46a80f9829d7b70ce72abc3ee2bfa534ef52d7a4b070360807e6d1b'
 '53fa70cfe40cb8a3ca432590e4f76561df0f129a31b121c9b4b34af0da7c4d87'
 '0377d08a07bda056785981d3352ccd2dbc0387c4836f91fb73e6b790d836620d')
 
@@ -46,6 +48,9 @@ pkgver() {
 
 prepare() {
   cd "${_pkgname}" || exit
+  git apply --check ../fastmtp-qwen35.patch
+  git apply ../fastmtp-qwen35.patch
+
   # Version info is not passed on the cmake command line: cmake/build-info.cmake
   # sets BUILD_NUMBER/BUILD_COMMIT with plain set() calls that shadow the cache,
   # so -D flags for them are silently ignored. It derives them from git instead,

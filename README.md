@@ -97,8 +97,8 @@ Drop-in for any OpenAI-compatible backend. The entrypoint reads:
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `MODEL_PATH` | — | Required. |
-| `MTP_MODEL_PATH` | unset | Enables `--spec-draft-model` + `--spec-type draft-mtp`. |
-| `MTP_DRAFT_N` | `2` | Lookahead depth for the above. |
+| `MTP_MODEL_PATH` | unset | Loads an external MTP companion with `--model-draft`. |
+| `MTP_DRAFT_N` | `3` | MTP lookahead depth (`n_max`). |
 | `CTX_SIZE` | `8192` | |
 | `N_GPU_LAYERS` | `-1` | Ignored by `:cpu`, which has no GPU to offload to. |
 | `THREADS` | `nproc` | |
@@ -129,6 +129,22 @@ services:
 ```
 
 For `:cpu`, same block minus the `deploy:` section. See `docker-compose.example.yml` for a full stack with OpenWebUI.
+
+The [HauhauCS Qwen3.8 FastMTP release](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF)
+uses the same variables. Pair any compatible target quant with its shared 32K
+companion:
+
+```yaml
+environment:
+  - MODEL_PATH=/models/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-Q4_K_P.gguf
+  - MTP_MODEL_PATH=/models/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-FastMTP-32K.gguf
+  - MTP_DRAFT_N=3
+  - CTX_SIZE=204800
+  - EXTRA_ARGS=--parallel 1 --split-mode none --no-mmap
+```
+
+The image carries a local Qwen3.5 FastMTP port on top of the recorded upstream
+revision. `just check` tracks both revisions and rebuilds if either changes.
 
 One trap worth naming: on `:cuda` the weights live in VRAM, so the container's RAM footprint is small and a tight memory limit looks fine. Move that same model to `:cpu` and the weights land in host RAM — with `--mlock`, permanently — and the limit you never thought about becomes an OOM kill at load. Size it for the model, not for what the GPU was politely hiding from you.
 

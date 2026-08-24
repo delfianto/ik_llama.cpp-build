@@ -12,3 +12,4 @@
 !entrypoint.sh
 !llama.cpp.conf
 !llama.cpp.service
+!fastmtp-qwen35.patch

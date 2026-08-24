@@ -18,18 +18,12 @@ else
     exit 1
 fi
 
-# Check for MTP / Speculative draft model (Gemma 4 MTP support)
+# Check for an external MTP companion model.
 if [ -n "$MTP_MODEL_PATH" ]; then
-    echo "MTP Draft Model detected. Enabling Multi-Token Prediction (draft-mtp)..."
-    CMD+=("--spec-draft-model" "$MTP_MODEL_PATH")
-    CMD+=("--spec-type" "draft-mtp")
-    
-    # Optional tuning for MTP
-    if [ -n "$MTP_DRAFT_N" ]; then
-        CMD+=("--spec-draft-n-max" "$MTP_DRAFT_N")
-    else
-        CMD+=("--spec-draft-n-max" "2") # Default conservative lookahead
-    fi
+    MTP_DRAFT_N=${MTP_DRAFT_N:-3}
+    echo "MTP companion detected. Enabling Multi-Token Prediction at depth ${MTP_DRAFT_N}..."
+    CMD+=("--model-draft" "$MTP_MODEL_PATH")
+    CMD+=("--spec-type" "mtp:n_max=${MTP_DRAFT_N},p_min=0.0")
 fi
 
 # Add any additional user-provided arguments

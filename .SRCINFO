@@ -1,6 +1,6 @@
 pkgbase = ik-llama.cpp-cuda-git
 	pkgdesc = Port of Facebook's LLaMA model in C/C++ (with NVIDIA CUDA optimizations) - fork by ikawrakow
-	pkgver = t0002.r912.1fddd12b
+	pkgver = t0002.r1026.8337e4cd3
 	pkgrel = 1
 	url = https://github.com/ikawrakow/ik_llama.cpp
 	arch = x86_64
@@ -27,9 +27,11 @@ pkgbase = ik-llama.cpp-cuda-git
 	conflicts = ggml
 	conflicts = llama.cpp
 	source = git+https://github.com/ikawrakow/ik_llama.cpp.git
+	source = fastmtp-qwen35.patch
 	source = llama.cpp.conf
 	source = llama.cpp.service
 	sha256sums = SKIP
+	sha256sums = a23b628aa46a80f9829d7b70ce72abc3ee2bfa534ef52d7a4b070360807e6d1b
 	sha256sums = 53fa70cfe40cb8a3ca432590e4f76561df0f129a31b121c9b4b34af0da7c4d87
 	sha256sums = 0377d08a07bda056785981d3352ccd2dbc0387c4836f91fb73e6b790d836620d
 

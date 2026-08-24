@@ -4,12 +4,13 @@
 # with makepkg (PKGBUILD's `source=git+...` populates the same directory), so
 # `just pkg` and the docker builds never clone twice.
 
-mirror   := "ik_llama.cpp"
+mirror := "ik_llama.cpp"
 upstream := "https://github.com/ikawrakow/ik_llama.cpp.git"
-srcdir   := ".build/src"
-image    := "ghcr.io/delfianto/ik_llama.cpp"
-ref      := env_var_or_default("IK_LLAMA_REF", "main")
-force    := env_var_or_default("FORCE", "0")
+srcdir := ".build/src"
+image := "ghcr.io/delfianto/ik_llama.cpp"
+fastmtp_patch := "fastmtp-qwen35.patch"
+ref := env("IK_LLAMA_REF", "main")
+force := env("FORCE", "0")
 
 _default:
     @just --list --unsorted
@@ -18,31 +19,36 @@ _default:
 fetch:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ -d "{{mirror}}" ]]; then
-        git -C "{{mirror}}" fetch --prune --quiet
+    if [[ -d "{{ mirror }}" ]]; then
+        git -C "{{ mirror }}" fetch --prune --quiet
     else
         echo "==> cloning mirror (one time, ~131MB)"
-        git clone --mirror "{{upstream}}" "{{mirror}}"
+        git clone --mirror "{{ upstream }}" "{{ mirror }}"
     fi
 
 # Report whether upstream has moved since each image was built.
 check: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{mirror}}" rev-parse "{{ref}}")
-    desc=$(git -C "{{mirror}}" log -1 --format='%cr -- %s' "$sha")
-    echo "upstream {{ref}} @ ${sha:0:12}  ($desc)"
+    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1)
+    desc=$(git -C "{{ mirror }}" log -1 --format='%cr -- %s' "$sha")
+    echo "upstream {{ ref }} @ ${sha:0:12}  ($desc)"
     echo
     stale=0
     for v in cpu cuda; do
-        built=$(docker image inspect "{{image}}:$v" \
+        built=$(docker image inspect "{{ image }}:$v" \
             --format '{{{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)
+        built_patch=$(docker image inspect "{{ image }}:$v" \
+            --format '{{{{ index .Config.Labels "org.opencontainers.image.fastmtp-patch" }}' 2>/dev/null || true)
         if [[ -z "$built" ]]; then
             printf '  %-5s not built\n' "$v:"; stale=1
-        elif [[ "$built" == "$sha" ]]; then
+        elif [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" ]]; then
             printf '  %-5s up to date\n' "$v:"
+        elif [[ "$built" == "$sha" ]]; then
+            printf '  %-5s FastMTP patch changed\n' "$v:"; stale=1
         else
-            behind=$(git -C "{{mirror}}" rev-list --count "$built..$sha" 2>/dev/null || echo '?')
+            behind=$(git -C "{{ mirror }}" rev-list --count "$built..$sha" 2>/dev/null || echo '?')
             printf '  %-5s STALE at %s (%s commits behind)\n' "$v:" "${built:0:12}" "$behind"; stale=1
         fi
     done
@@ -53,30 +59,33 @@ check: fetch
 _materialize sha:
     #!/usr/bin/env bash
     set -euo pipefail
-    rm -rf "{{srcdir}}"
-    mkdir -p "{{srcdir}}"
+    rm -rf "{{ srcdir }}"
+    mkdir -p "{{ srcdir }}"
     # `git archive` is byte-deterministic (mtimes come from the commit), so an
     # unchanged SHA re-extracts identically and the COPY layer still cache-hits.
-    git -C "{{mirror}}" archive --format=tar "{{sha}}" | tar -x -C "{{srcdir}}"
+    git -C "{{ mirror }}" archive --format=tar "{{ sha }}" | tar -x -C "{{ srcdir }}"
     # Upstream's own .dockerignore excludes build*/ and **/*.md; it would be
     # applied to the named context and is none of our business.
-    rm -f "{{srcdir}}/.dockerignore"
+    rm -f "{{ srcdir }}/.dockerignore"
 
 # Build one variant, skipping if it already matches upstream (FORCE=1 to override).
 _build variant: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{mirror}}" rev-parse "{{ref}}")
-    built=$(docker image inspect "{{image}}:{{variant}}" \
+    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1)
+    built=$(docker image inspect "{{ image }}:{{ variant }}" \
         --format '{{{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)
-    if [[ "$built" == "$sha" && "{{force}}" != "1" ]]; then
-        echo "==> {{variant}}: already at ${sha:0:12} -- skipping (FORCE=1 to rebuild)"
+    built_patch=$(docker image inspect "{{ image }}:{{ variant }}" \
+        --format '{{{{ index .Config.Labels "org.opencontainers.image.fastmtp-patch" }}' 2>/dev/null || true)
+    if [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" && "{{ force }}" != "1" ]]; then
+        echo "==> {{ variant }}: already at ${sha:0:12} -- skipping (FORCE=1 to rebuild)"
         exit 0
     fi
-    num=$(git -C "{{mirror}}" rev-list --count "$sha")
+    num=$(git -C "{{ mirror }}" rev-list --count "$sha")
     just _materialize "$sha"
-    echo "==> building {{variant}} @ ${sha:0:12} (build number $num)"
-    IK_LLAMA_SHA="$sha" IK_LLAMA_BUILD_NUMBER="$num" docker buildx bake "{{variant}}"
+    echo "==> building {{ variant }} @ ${sha:0:12} (build number $num)"
+    IK_LLAMA_SHA="$sha" IK_LLAMA_BUILD_NUMBER="$num" IK_LLAMA_PATCH_SHA="$patch_sha" docker buildx bake "{{ variant }}"
 
 # Build the CPU image.
 cpu: (_build "cpu")
@@ -93,4 +102,4 @@ pkg:
 
 # Remove the materialised source tree and build cache (keeps the mirror).
 clean:
-    rm -rf "{{srcdir}}"
+    rm -rf "{{ srcdir }}"

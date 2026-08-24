@@ -61,6 +61,10 @@ WORKDIR /app
 # see docker-bake.hcl. Kept after the apt layer so source churn doesn't refetch
 # the toolchain.
 COPY --from=ikllama . /app
+COPY fastmtp-qwen35.patch /tmp/fastmtp-qwen35.patch
+
+RUN git apply --check /tmp/fastmtp-qwen35.patch && \
+    git apply /tmp/fastmtp-qwen35.patch
 
 ARG IK_LLAMA_SHA=unknown
 ARG IK_LLAMA_BUILD_NUMBER=0
