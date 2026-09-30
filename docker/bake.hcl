@@ -1,8 +1,8 @@
 # Local build definitions for the two image variants.
 #
 # Prefer the justfile (`just cpu` / `just cuda` / `just all`) -- it updates the
-# mirror, materialises .build/src, and passes the SHA and build number below.
-# Invoking bake directly requires .build/src to already exist.
+# mirror, materialises .cache/docker/src, and passes the SHA and build number below.
+# Invoking bake directly requires .cache/docker/src to already exist.
 
 variable "REGISTRY" {
   default = "ghcr.io/delfianto"
@@ -12,7 +12,7 @@ variable "IMAGE" {
   default = "ik_llama.cpp"
 }
 
-# Commit the source tree in .build/src was extracted from. Recorded as an image
+# Commit the source tree in .cache/docker/src was extracted from. Recorded as an image
 # label so `just check` can tell what each image was built from without a
 # separate stamp file that could drift.
 variable "IK_LLAMA_SHA" {
@@ -37,10 +37,10 @@ group "default" {
 
 target "_common" {
   context    = "."
-  dockerfile = "Dockerfile"
+  dockerfile = "docker/Dockerfile"
   # Upstream source, extracted from the local bare mirror by `just`.
   contexts = {
-    ikllama = ".build/src"
+    ikllama = ".cache/docker/src"
   }
   # znver5 and the CUDA archs are both x86_64-only; never let bake try emulation.
   platforms = ["linux/amd64"]

@@ -1,15 +1,9 @@
-*
-!.dockerignore
-!.gitignore
-!.SRCINFO
-!Dockerfile
-!justfile
-!LICENSE
-!PKGBUILD
-!README.md
-!docker-bake.hcl
-!docker-compose.example.yml
-!entrypoint.sh
-!llama.cpp.conf
-!llama.cpp.service
-!fastmtp-qwen35.patch
+.cache/
+.env
+
+# Guard against makepkg being run directly; just routes these under .cache/.
+/src/
+/pkg/
+/*.pkg.tar.*
+
+*.log

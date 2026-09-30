@@ -1,0 +1,99 @@
+diff --git a/src/graphs/build_qwen35.cpp b/src/graphs/build_qwen35.cpp
+index d14153ce1..8e9ee7b00 100644
+--- a/src/graphs/build_qwen35.cpp
++++ b/src/graphs/build_qwen35.cpp
+@@ -256,6 +256,23 @@ struct ggml_tensor * llm_build_context::build_qwen35_mtp(
+     cb(cur, "ffn_out", il);
+ 
+     cur = build_output(lctx, ctx0, cur, model.output_mtp, mtp_layer.nextn.shared_head_norm, cb);
++
++    if (model.d2t != nullptr) {
++        const int64_t n_draft_vocab = cur->ne[0];
++        const int64_t n_outputs     = cur->ne[1];
++        const int64_t n_vocab_full  = (int64_t) model.vocab.n_tokens();
++
++        GGML_ASSERT(model.d2t->ne[0] == n_draft_vocab);
++
++        ggml_tensor * logits = ggml_fill(ctx0,
++                ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, 1, n_vocab_full, n_outputs), -INFINITY);
++        cur = ggml_set_rows(ctx0, logits,
++                ggml_reshape_3d(ctx0, cur,       1,             n_draft_vocab, n_outputs),
++                ggml_reshape_3d(ctx0, model.d2t, n_draft_vocab, 1,             1));
++        cur = ggml_reshape_2d(ctx0, cur, n_vocab_full, n_outputs);
++        cb(cur, "result_output_d2t", -1);
++    }
++
+     cb(cur, "result_output", -1);
+ 
+     return cur;
+diff --git a/src/llama-load-tensors.cpp b/src/llama-load-tensors.cpp
+index c7b44c0bd..c14ea63e5 100644
+--- a/src/llama-load-tensors.cpp
++++ b/src/llama-load-tensors.cpp
+@@ -2181,14 +2181,29 @@ bool create_tensors_helper::create_qwen35moe_tensors(const LLM_TN & tn) {
+ 
+ bool create_tensors_helper::create_qwen35_tensors(const LLM_TN & tn) {
+     LOADING_PRELUDE
++    // HauhauCS FastMTP companions keep only a 32K draft vocabulary and map
++    // those logits back into the target vocabulary through the d2t tensor.
++    const bool mtp_only = hparams.nextn_predict_layers > 0 &&
++                          ml.get_tensor_meta(tn(LLM_TENSOR_ATTN_NORM, "weight", 0).c_str()) == nullptr;
++
++    int64_t n_vocab_out = n_vocab;
++    const ggml_tensor * d2t_meta = ml.get_tensor_meta("d2t");
++    if (mtp_only && d2t_meta != nullptr) {
++        n_vocab_out = d2t_meta->ne[0];
++        model.d2t = create_tensor(ctx_output, "d2t", { n_vocab_out });
++        LLAMA_LOG_INFO("%s: QWEN35 MTP using d2t draft-vocab trim (n_vocab_out = %lld)\n",
++                __func__, (long long) n_vocab_out);
++    }
++
+     model.tok_embd = create_tensor(ctx_input, tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab});
+ 
+     // output
+     {
+         model.output_norm = create_tensor(ctx_output, tn(LLM_TENSOR_OUTPUT_NORM, "weight"), {n_embd});
+-        model.output      = create_tensor(ctx_output, tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab},
++        model.output      = create_tensor(ctx_output, tn(LLM_TENSOR_OUTPUT,      "weight"), {n_embd, n_vocab_out},
+                 llama_model_loader::TENSOR_NOT_REQUIRED);
+         if (model.output == NULL) {
++            GGML_ASSERT(model.d2t == nullptr && "d2t draft-vocab trim requires output.weight");
+             model.output = create_tensor(ctx_output, tn(LLM_TENSOR_TOKEN_EMBD, "weight"), {n_embd, n_vocab},
+                     llama_model_loader::TENSOR_DUPLICATED);
+         }
+@@ -2214,8 +2229,6 @@ bool create_tensors_helper::create_qwen35_tensors(const LLM_TN & tn) {
+     const int64_t conv_dim   = key_dim * 2 + value_dim;
+ 
+     // A predictor-only MTP GGUF reports the full block count but only ships the NextN block, skip the rest
+-    const bool mtp_only = hparams.nextn_predict_layers > 0 &&
+-                          ml.get_tensor_meta(tn(LLM_TENSOR_ATTN_NORM, "weight", 0).c_str()) == nullptr;
+     const int trunk_flags = mtp_only
+         ? llama_model_loader::TENSOR_SKIP | llama_model_loader::TENSOR_NOT_REQUIRED : 0;
+ 
+diff --git a/src/llama-model.h b/src/llama-model.h
+index 666c2a711..52575e41e 100644
+--- a/src/llama-model.h
++++ b/src/llama-model.h
+@@ -567,6 +567,7 @@ struct llama_model {
+     struct ggml_tensor * output_b;
+     struct ggml_tensor * output_norm_enc;
+     struct ggml_tensor * output_mtp = nullptr;
++    struct ggml_tensor * d2t = nullptr;
+     struct ggml_tensor * hc_head_base = nullptr;
+     struct ggml_tensor * hc_head_fn = nullptr;
+     struct ggml_tensor * hc_head_scale = nullptr;
+diff --git a/src/llama.cpp b/src/llama.cpp
+index 1587a8389..2802457f9 100644
+--- a/src/llama.cpp
++++ b/src/llama.cpp
+@@ -4281,6 +4281,10 @@ static std::pair<std::vector<double>, double> get_layer_sizes(const llama_model_
+         if (name == "output_norm.weight") {
+             continue;
+         }
++        if (name == "d2t") {
++            output_misc_size += size;
++            continue;
++        }
+         if (name == "token_embd_norm.weight" || name == "token_embd_norm.bias") {
+             output_misc_size += size;
+             continue;

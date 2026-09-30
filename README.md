@@ -27,7 +27,8 @@ So: real gains, narrow scope, no magic. Compiling `-march=native` has never resc
 
 ## Building
 
-`just` is the front door. There are two variants, cut from one `Dockerfile` by a `VARIANT` build arg:
+`just` is the front door. There are two variants, cut from
+[`docker/Dockerfile`](docker/Dockerfile) by a `VARIANT` build arg:
 
 | Tag | Runtime base | Unpacked / pull |
 | --- | --- | --- |
@@ -41,6 +42,27 @@ just cpu        # build ghcr.io/delfianto/ik_llama.cpp:cpu
 just cuda       # build ghcr.io/delfianto/ik_llama.cpp:cuda
 just all        # both
 just pkg        # the Arch package, via makepkg
+just pkg-install
+just patch-check # does the optional FastMTP patch still apply upstream?
+just doctor      # check the local toolchain and package metadata
+just verify      # doctor + patch applicability + Dockerfile checks
+just compose up -d
+just push        # build and push both image variants
+```
+
+Everything generated or downloaded stays under `.cache/`: `ik_llama.cpp` is the
+shared upstream mirror, `build/` is makepkg's work area, `docker/` is Docker's
+materialized source context, and `pkg/` holds finished Arch packages. `just clean`
+removes Docker temporaries; `just clobber` removes all build and package output
+while retaining the upstream mirror.
+
+### Repository layout
+
+```text
+docker/     Dockerfile, Bake definition, entrypoint, Compose example
+arch/       PKGBUILD, .SRCINFO, service and default configuration
+patches/    shared optional patches and their maintenance notes
+justfile    the only build and maintenance entry point
 ```
 
 BuildKit only builds stages the chosen variant can actually reach, so `just cpu` never drags down the CUDA base images. The 24x size gap between the two is almost entirely NVIDIA's runtime plus **1.37 GB of statically-linked device code** — of which `llama-cli` is a ~678 MB near-duplicate of `llama-server`, carried purely so you can poke at things inside the container. Worth it, probably. Nobody has ever checked.
@@ -53,9 +75,16 @@ A Zen 5 + LTO + CUDA build on a shared GitHub runner took the better part of for
 
 ### One clone, shared with makepkg
 
-`./ik_llama.cpp` is a bare mirror of upstream and the single source of truth. It is the same clone `makepkg` populates from the PKGBUILD's `source=git+...`, so `just pkg` and the Docker builds do not each go fetch their own copy like roommates buying separate milk.
+`.cache/ik_llama.cpp` is a bare mirror of upstream and the single source
+of truth. It is the same clone `makepkg` populates from the PKGBUILD's
+`source=git+...`, so `just pkg` and the Docker builds do not each fetch their own
+copy.
 
-Each build runs `git archive <sha>` from that mirror into `.build/src`, handed to the `Dockerfile` as a named context. No network, no re-clone, no `.git` in the image. `git archive` is byte-deterministic — mtimes come from the commit — so an unchanged commit re-extracts identically and the `COPY` layer still cache-hits.
+Each image build runs `git archive <sha>` from that mirror into
+`.cache/docker/src`, handed to the Dockerfile as a named context. No network,
+no re-clone, no `.git` in the image. `git archive` is byte-deterministic — mtimes
+come from the commit — so an unchanged commit re-extracts identically and the
+`COPY` layer still cache-hits.
 
 Because the source arrives as a named context, a bare `docker build .` no longer works. Use `just`.
 
@@ -85,7 +114,7 @@ IK_LLAMA_REF=bbc7de47 just cuda
 Images are tagged into `ghcr.io/delfianto` but nothing pushes on its own:
 
 ```bash
-docker push ghcr.io/delfianto/ik_llama.cpp:cuda
+just push
 ```
 
 There is no `:latest`. With two variants it would have to mean one of them, and whichever it meant would be wrong half the time.
@@ -128,11 +157,16 @@ services:
               capabilities: [gpu]
 ```
 
-For `:cpu`, same block minus the `deploy:` section. See `docker-compose.example.yml` for a full stack with OpenWebUI.
+For `:cpu`, use the same block minus the `deploy:` section. See
+[`docker/compose.example.yml`](docker/compose.example.yml) for a full
+stack with OpenWebUI, or run it through `just compose up -d`.
 
-Qwen3.8 FastMTP support is experimental and disabled in normal builds. The
-adapted patch can produce unbounded or degraded output, so do not use it when
-output correctness matters. To opt in, build with:
+Current `ik_llama.cpp` supports normal embedded Qwen3.5/3.8 MTP and standalone
+full-vocabulary companions without a downstream patch. HauhauCS FastMTP is a
+different compact companion: its output vocabulary is trimmed to 32K and a
+`d2t` tensor maps those logits back to the target vocabulary. Upstream does not
+consume that tensor yet, so the small compatibility patch remains experimental
+and disabled in normal builds. To opt in, build with:
 
 ```bash
 EXPERIMENTAL_FASTMTP=1 just cuda
@@ -142,7 +176,7 @@ EXPERIMENTAL_FASTMTP=1 just cuda
 The flag defaults to `0`. `just check` records whether an image is patched and
 rebuilds when the selected mode or patch changes.
 
-The experimental patch is adapted from the
+The compatibility patch is adapted from the
 [HauhauCS Qwen3.8 FastMTP release](https://huggingface.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF).
 With an opted-in build, pair any compatible target quant with its shared 32K
 companion:
@@ -161,7 +195,23 @@ One trap worth naming: on `:cuda` the weights live in VRAM, so the container's R
 ## Arch package
 
 ```bash
-just pkg      # or: makepkg -si
+just pkg
+just pkg-install
 ```
 
-Shares the mirror above, so it will not re-clone. Same architecture constraints apply, which is to say: it will not run on your laptop, your NAS, or that Xeon you were emotionally attached to in 2019.
+Packages land in `.cache/pkg`; makepkg work trees stay in `.cache/build`.
+The package shares the source mirror above, so it will not re-clone. Same
+architecture constraints apply, which is to say: it will not run on your laptop,
+your NAS, or that Xeon you were emotionally attached to in 2019.
+
+The package uses the current `gcc` and `g++` from `PATH`. Pin another installed
+toolchain when needed with `aur_llamacpp_cc=gcc-16 aur_llamacpp_cxx=g++-16 just
+pkg`.
+
+Because makepkg requires local sources beside its active PKGBUILD, `just pkg`
+creates a symlink-only recipe in `.cache/build/recipe`. The symlink targets remain
+the canonical files in `arch/` and `patches/`; Docker reads those same files
+directly.
+
+See [`patches/README.md`](patches/README.md) for the current patch audit and the MoE
+cache work worth watching.

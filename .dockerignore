@@ -1,5 +1,0 @@
-# The root context only needs the entrypoint; the upstream source arrives via
-# the `ikllama` named context (see docker-bake.hcl). Without this, the bare
-# mirror and makepkg's src/ tree (~1.1GB) ship to the daemon on every build.
-*
-!entrypoint.sh
