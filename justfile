@@ -63,7 +63,7 @@ check: fetch
         fi
     done
     echo
-    if (( stale )); then echo "run: just all"; else echo "nothing to do"; fi
+    if (( stale )); then echo "run: just docker"; else echo "nothing to do"; fi
 
 # Extract a pristine worktree at the given commit into .cache/docker/src.
 _materialize sha:
@@ -103,14 +103,26 @@ _build variant: fetch
         IK_LLAMA_EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}" \
         docker buildx bake -f "{{ bake_file }}" "{{ variant }}"
 
-# Build the CPU image.
-cpu: (_build "cpu")
-
-# Build the CUDA image.
-cuda: (_build "cuda")
-
-# Build both images.
-all: cpu cuda
+# Build Docker images, push local images, or forward arguments to Compose.
+[positional-arguments]
+docker variant="all" *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shift
+    if [[ {{ quote(variant) }} != compose && $# -gt 0 ]]; then
+        echo "Only just docker compose accepts additional arguments" >&2
+        exit 2
+    fi
+    case {{ quote(variant) }} in
+        all) just _build cpu; just _build cuda ;;
+        cpu|cuda) just _build {{ quote(variant) }} ;;
+        push)
+            docker push "{{ image }}:cpu"
+            docker push "{{ image }}:cuda"
+            ;;
+        compose) docker compose -f "{{ compose_file }}" "$@" ;;
+        *) echo "Usage: just docker [cpu|cuda|push|compose [args...]]" >&2; exit 2 ;;
+    esac
 
 # Stage makepkg's local sources. makepkg only resolves them beside the PKGBUILD,
 # so symlinks let Arch and Docker consume the one canonical patch in patches/.
@@ -124,27 +136,33 @@ _stage_arch:
     ln -sfn "$recipe_root/{{ arch_dir }}/llama.cpp.service" "{{ arch_stage }}/llama.cpp.service"
     ln -sfn "$recipe_root/{{ fastmtp_patch }}" "{{ arch_stage }}/fastmtp-qwen38-d2t.patch"
 
-# Build the Arch package with makepkg (reuses the same mirror).
-pkg: _stage_arch
+# Build the Arch package, or install an existing package (builds if missing).
+pkg action="build": _stage_arch
     #!/usr/bin/env bash
     set -euo pipefail
     recipe_root="$PWD"
-    BUILDDIR="$recipe_root/.cache/build" \
-    PKGDEST="$recipe_root/.cache/pkg" \
-    SRCDEST="$recipe_root/.cache" \
-    EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}" \
-        makepkg -D "{{ arch_stage }}" -sf --noconfirm
-
-# Build and install the Arch package.
-pkg-install: _stage_arch
-    #!/usr/bin/env bash
-    set -euo pipefail
-    recipe_root="$PWD"
-    BUILDDIR="$recipe_root/.cache/build" \
-    PKGDEST="$recipe_root/.cache/pkg" \
-    SRCDEST="$recipe_root/.cache" \
-    EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}" \
-        makepkg -D "{{ arch_stage }}" -sif --noconfirm
+    case {{ quote(action) }} in
+        build) flags=-sf ;;
+        install) flags=-si ;;
+        *) echo "Usage: just pkg [install]" >&2; exit 2 ;;
+    esac
+    export BUILDDIR="$recipe_root/.cache/build"
+    export PKGDEST="$recipe_root/.cache/pkg"
+    export SRCDEST="$recipe_root/.cache"
+    export EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}"
+    if [[ {{ quote(action) }} == install ]]; then
+        package_list=$(makepkg -D "{{ arch_stage }}" --packagelist)
+        mapfile -t packages <<< "$package_list"
+        all_built=1
+        for package in "${packages[@]}"; do
+            [[ -f "$package" ]] || all_built=0
+        done
+        if (( all_built )); then
+            sudo pacman -U --noconfirm "${packages[@]}"
+            exit 0
+        fi
+    fi
+    makepkg -D "{{ arch_stage }}" "$flags" --noconfirm
 
 # Regenerate arch/.SRCINFO.
 srcinfo:
@@ -164,15 +182,6 @@ patch-check: fetch
     git -C "{{ mirror }}" archive "$sha" | tar -x -C "$work"
     git -C "$work" apply --check "$PWD/{{ fastmtp_patch }}"
     echo "patch applies to ${sha:0:12}"
-
-# Start the example stack, forwarding arguments to Docker Compose.
-compose *args:
-    docker compose -f "{{ compose_file }}" {{ args }}
-
-# Push both locally built image variants.
-push: all
-    docker push "{{ image }}:cpu"
-    docker push "{{ image }}:cuda"
 
 # Check local tool availability and patch/package metadata.
 doctor:

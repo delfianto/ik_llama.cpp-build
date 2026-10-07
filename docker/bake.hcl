@@ -1,6 +1,6 @@
 # Local build definitions for the two image variants.
 #
-# Prefer the justfile (`just cpu` / `just cuda` / `just all`) -- it updates the
+# Prefer the justfile (`just docker cpu` / `just docker cuda` / `just docker`) -- it updates the
 # mirror, materialises .cache/docker/src, and passes the SHA and build number below.
 # Invoking bake directly requires .cache/docker/src to already exist.
 

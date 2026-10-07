@@ -38,16 +38,16 @@ So: real gains, narrow scope, no magic. Compiling `-march=native` has never resc
 ```bash
 just            # list recipes
 just check      # has upstream moved since each image was built?
-just cpu        # build ghcr.io/delfianto/ik_llama.cpp:cpu
-just cuda       # build ghcr.io/delfianto/ik_llama.cpp:cuda
-just all        # both
+just docker cpu        # build ghcr.io/delfianto/ik_llama.cpp:cpu
+just docker cuda       # build ghcr.io/delfianto/ik_llama.cpp:cuda
+just docker        # both
 just pkg        # the Arch package, via makepkg
-just pkg-install
+just pkg install
 just patch-check # does the optional FastMTP patch still apply upstream?
 just doctor      # check the local toolchain and package metadata
 just verify      # doctor + patch applicability + Dockerfile checks
-just compose up -d
-just push        # build and push both image variants
+just docker compose up -d
+just docker push # push both existing local image variants without rebuilding
 ```
 
 Everything generated or downloaded stays under `.cache/`: `ik_llama.cpp` is the
@@ -65,7 +65,7 @@ patches/    shared optional patches and their maintenance notes
 justfile    the only build and maintenance entry point
 ```
 
-BuildKit only builds stages the chosen variant can actually reach, so `just cpu` never drags down the CUDA base images. The 24x size gap between the two is almost entirely NVIDIA's runtime plus **1.37 GB of statically-linked device code** — of which `llama-cli` is a ~678 MB near-duplicate of `llama-server`, carried purely so you can poke at things inside the container. Worth it, probably. Nobody has ever checked.
+BuildKit only builds stages the chosen variant can actually reach, so `just docker cpu` never drags down the CUDA base images. The 24x size gap between the two is almost entirely NVIDIA's runtime plus **1.37 GB of statically-linked device code** — of which `llama-cli` is a ~678 MB near-duplicate of `llama-server`, carried purely so you can poke at things inside the container. Worth it, probably. Nobody has ever checked.
 
 > `docker images` will insist these are 6.97 GB and 231 MB. It is lying — or rather, containerd's image store is counting the compressed blobs *and* the unpacked snapshots and adding them together, which is a bold interpretation of the word "size". The table above is real.
 
@@ -103,8 +103,8 @@ upstream main @ 1fddd12ba861  (18 hours ago -- New op: ggml_sum_rows_ext (#2132)
 Builds skip themselves when the image already matches upstream. Override with `FORCE=1`, or pin a ref (branch, tag, or full SHA):
 
 ```bash
-FORCE=1 just cuda
-IK_LLAMA_REF=bbc7de47 just cuda
+FORCE=1 just docker cuda
+IK_LLAMA_REF=bbc7de47 just docker cuda
 ```
 
 `ccache` is mounted per variant, so bumping upstream a few commits recompiles a small slice rather than the whole tree. The LTO link still runs in full every time, because LTO is like that.
@@ -114,7 +114,8 @@ IK_LLAMA_REF=bbc7de47 just cuda
 Images are tagged into `ghcr.io/delfianto` but nothing pushes on its own:
 
 ```bash
-just push
+just docker       # build both images first
+just docker push  # push the existing local images
 ```
 
 There is no `:latest`. With two variants it would have to mean one of them, and whichever it meant would be wrong half the time.
@@ -159,7 +160,7 @@ services:
 
 For `:cpu`, use the same block minus the `deploy:` section. See
 [`docker/compose.example.yml`](docker/compose.example.yml) for a full
-stack with OpenWebUI, or run it through `just compose up -d`.
+stack with OpenWebUI, or run it through `just docker compose up -d`.
 
 Current `ik_llama.cpp` supports normal embedded Qwen3.5/3.8 MTP and standalone
 full-vocabulary companions without a downstream patch. HauhauCS FastMTP is a
@@ -169,7 +170,7 @@ consume that tensor yet, so the small compatibility patch remains experimental
 and disabled in normal builds. To opt in, build with:
 
 ```bash
-EXPERIMENTAL_FASTMTP=1 just cuda
+EXPERIMENTAL_FASTMTP=1 just docker cuda
 # Arch package: EXPERIMENTAL_FASTMTP=1 just pkg
 ```
 
@@ -196,9 +197,11 @@ One trap worth naming: on `:cuda` the weights live in VRAM, so the container's R
 
 ```bash
 just pkg
-just pkg-install
+just pkg install
 ```
 
+`just pkg install` installs the existing package from `.cache/pkg` when available,
+or builds and installs it if missing. `just pkg` rebuilds the package.
 Packages land in `.cache/pkg`; makepkg work trees stay in `.cache/build`.
 The package shares the source mirror above, so it will not re-clone. Same
 architecture constraints apply, which is to say: it will not run on your laptop,
