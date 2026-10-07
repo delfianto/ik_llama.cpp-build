@@ -5,7 +5,7 @@
 : ${EXPERIMENTAL_FASTMTP:=0}
 pkgname=ik-llama.cpp-cuda-git
 _pkgname="ik_llama.cpp"
-pkgver=t0002.r1172.32cddbfce
+pkgver=t0002.r1203.c069e89e1
 pkgrel=1
 pkgdesc="Port of Facebook's LLaMA model in C/C++ (with NVIDIA CUDA optimizations) - fork by ikawrakow"
 arch=(x86_64 armv7h aarch64)
@@ -34,19 +34,22 @@ optdepends=(
 provides=("${_pkgname}")
 conflicts=("${_pkgname}" libggml ggml llama.cpp)
 source=(
-"git+https://github.com/ikawrakow/ik_llama.cpp.git"
+ik_llama.cpp.tar
+source-version
 fastmtp-qwen38-d2t.patch
 llama.cpp.conf
 llama.cpp.service
 )
 sha256sums=('SKIP'
+'SKIP'
 '18a7262d22dc3e2cc987eae00990bb7a28cac14eeead741651a09d6dac201a2a'
 '53fa70cfe40cb8a3ca432590e4f76561df0f129a31b121c9b4b34af0da7c4d87'
 '0377d08a07bda056785981d3352ccd2dbc0387c4836f91fb73e6b790d836620d')
 
 pkgver() {
-  cd "${_pkgname}" || exit
-  printf "%s" "$(git describe --tags | sed 's/\([^-]*-\)g/r\1/;s/-/./g')"
+  local timestamp commit
+  read -r timestamp commit < source-version
+  printf '%s.%s' "$timestamp" "$commit"
 }
 
 prepare() {
@@ -68,10 +71,16 @@ prepare() {
       ;;
   esac
 
-  # Version info is not passed on the cmake command line: cmake/build-info.cmake
-  # sets BUILD_NUMBER/BUILD_COMMIT with plain set() calls that shadow the cache,
-  # so -D flags for them are silently ignored. It derives them from git instead,
-  # which works here because this tree keeps its .git.
+  # Discard Git metadata left by the former makepkg VCS source.
+  rm -rf .git
+  # Use archive metadata and prevent Git discovery of the enclosing build repo.
+  local timestamp commit
+  read -r timestamp commit < ../source-version
+  sed -i \
+    -e 's/^if(Git_FOUND)/if(FALSE)/' \
+    -e "s/^set(BUILD_NUMBER 0)/set(BUILD_NUMBER ${timestamp})/" \
+    -e "s/^set(BUILD_COMMIT \"unknown\")/set(BUILD_COMMIT \"${commit}\")/" \
+    cmake/build-info.cmake
 
   cd ..
 

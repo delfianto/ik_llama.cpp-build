@@ -56,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Source arrives as a pristine `git archive` tree from the local bare mirror via
+# Source arrives as a pristine `git archive` tree from the local shallow bare clone via
 # the `ikllama` named context -- no clone, no network. `just` materialises it;
 # see docker/bake.hcl. Kept after the apt layer so source churn doesn't refetch
 # the toolchain.

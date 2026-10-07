@@ -38,7 +38,7 @@ group "default" {
 target "_common" {
   context    = "."
   dockerfile = "docker/Dockerfile"
-  # Upstream source, extracted from the local bare mirror by `just`.
+  # Upstream source, extracted from the local shallow bare clone by `just`.
   contexts = {
     ikllama = ".cache/docker/src"
   }

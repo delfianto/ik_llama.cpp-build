@@ -1,6 +1,6 @@
 # Local build orchestration for ik_llama.cpp.
 #
-# The bare mirror at .cache/ik_llama.cpp is the single source of truth and is shared
+# The shallow bare clone at .cache/ik_llama.cpp is the single source of truth and is shared
 # with makepkg, so
 # `just pkg` and the docker builds never clone twice.
 
@@ -13,24 +13,34 @@ arch_dir := "arch"
 arch_stage := ".cache/build/recipe"
 bake_file := "docker/bake.hcl"
 compose_file := "docker/compose.example.yml"
-ref := env("IK_LLAMA_REF", "main")
+ref := "main"
 force := env("FORCE", "0")
 experimental_fastmtp := env("EXPERIMENTAL_FASTMTP", "0")
 
 _default:
     @just --list --unsorted
 
-# Update the local bare mirror from upstream (clones it if missing).
+# Fetch only the latest main commit, replacing older full-history caches.
 fetch:
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "$(dirname "{{ mirror }}")"
-    if [[ -d "{{ mirror }}" ]]; then
-        git -C "{{ mirror }}" fetch --prune --quiet
-    else
-        echo "==> cloning mirror (one time, ~131MB)"
-        git clone --mirror "{{ upstream }}" "{{ mirror }}"
+    if [[ ! -d "{{ mirror }}" ]] || [[ $(git -C "{{ mirror }}" rev-parse --is-shallow-repository) != true ]]; then
+        work=$(mktemp -d "{{ mirror }}.shallow.XXXXXX")
+        trap 'rm -rf "$work"' EXIT
+        git clone --bare --depth=1 --single-branch --branch main --no-tags "{{ upstream }}" "$work"
+        rm -rf "{{ mirror }}"
+        mv "$work" "{{ mirror }}"
     fi
+    git -C "{{ mirror }}" config remote.origin.fetch '+refs/heads/main:refs/heads/main'
+    git -C "{{ mirror }}" config remote.origin.tagOpt --no-tags
+    git -C "{{ mirror }}" fetch --depth=1 --no-tags --prune origin '+refs/heads/main:refs/heads/main'
+    git -C "{{ mirror }}" symbolic-ref HEAD refs/heads/main
+    while read -r name; do
+        [[ "$name" == refs/heads/main ]] || git -C "{{ mirror }}" update-ref -d "$name"
+    done < <(git -C "{{ mirror }}" for-each-ref --format='%(refname)')
+    git -C "{{ mirror }}" reflog expire --expire=now --all
+    git -C "{{ mirror }}" gc --prune=now --quiet
 
 # Report whether upstream has moved since each image was built.
 check: fetch
@@ -58,8 +68,7 @@ check: fetch
         elif [[ "$built" == "$sha" ]]; then
             printf '  %-5s FastMTP patch changed\n' "$v:"; stale=1
         else
-            behind=$(git -C "{{ mirror }}" rev-list --count "$built..$sha" 2>/dev/null || echo '?')
-            printf '  %-5s STALE at %s (%s commits behind)\n' "$v:" "${built:0:12}" "$behind"; stale=1
+            printf '  %-5s STALE at %s\n' "$v:" "${built:0:12}"; stale=1
         fi
     done
     echo
@@ -96,7 +105,7 @@ _build variant: fetch
         echo "==> {{ variant }}: already at ${sha:0:12} -- skipping (FORCE=1 to rebuild)"
         exit 0
     fi
-    num=$(git -C "{{ mirror }}" rev-list --count "$sha")
+    num=$(git -C "{{ mirror }}" show -s --format=%ct "$sha")
     just _materialize "$sha"
     echo "==> building {{ variant }} @ ${sha:0:12} (build number $num)"
     IK_LLAMA_SHA="$sha" IK_LLAMA_BUILD_NUMBER="$num" IK_LLAMA_PATCH_SHA="$patch_sha" \
@@ -136,6 +145,16 @@ _stage_arch:
     ln -sfn "$recipe_root/{{ arch_dir }}/llama.cpp.service" "{{ arch_stage }}/llama.cpp.service"
     ln -sfn "$recipe_root/{{ fastmtp_patch }}" "{{ arch_stage }}/fastmtp-qwen38-d2t.patch"
 
+# Export main for makepkg without invoking its full-history Git source handler.
+_archive_arch: fetch _stage_arch
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sha=$(git -C "{{ mirror }}" rev-parse main)
+    git -C "{{ mirror }}" archive --prefix=ik_llama.cpp/ "$sha" > .cache/ik_llama.cpp.tar
+    git -C "{{ mirror }}" show -s --format='%ct %h' "$sha" > .cache/source-version
+    ln -sfn "$PWD/.cache/ik_llama.cpp.tar" "{{ arch_stage }}/ik_llama.cpp.tar"
+    ln -sfn "$PWD/.cache/source-version" "{{ arch_stage }}/source-version"
+
 # Build the Arch package, or install an existing package (builds if missing).
 pkg action="build": _stage_arch
     #!/usr/bin/env bash
@@ -162,6 +181,7 @@ pkg action="build": _stage_arch
             exit 0
         fi
     fi
+    just _archive_arch
     makepkg -D "{{ arch_stage }}" "$flags" --noconfirm
 
 # Regenerate arch/.SRCINFO.
@@ -201,7 +221,7 @@ verify: doctor patch-check
     sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
     just _materialize "$sha"
     IK_LLAMA_SHA="$sha" \
-    IK_LLAMA_BUILD_NUMBER=$(git -C "{{ mirror }}" rev-list --count "$sha") \
+    IK_LLAMA_BUILD_NUMBER=$(git -C "{{ mirror }}" show -s --format=%ct "$sha") \
     IK_LLAMA_PATCH_SHA=disabled \
         docker buildx bake -f "{{ bake_file }}" --call=check cpu cuda
 

@@ -51,10 +51,10 @@ just docker push # push both existing local image variants without rebuilding
 ```
 
 Everything generated or downloaded stays under `.cache/`: `ik_llama.cpp` is the
-shared upstream mirror, `build/` is makepkg's work area, `docker/` is Docker's
+shared shallow upstream clone, `build/` is makepkg's work area, `docker/` is Docker's
 materialized source context, and `pkg/` holds finished Arch packages. `just clean`
 removes Docker temporaries; `just clobber` removes all build and package output
-while retaining the upstream mirror.
+while retaining the upstream clone.
 
 ### Repository layout
 
@@ -75,10 +75,15 @@ A Zen 5 + LTO + CUDA build on a shared GitHub runner took the better part of for
 
 ### One clone, shared with makepkg
 
-`.cache/ik_llama.cpp` is a bare mirror of upstream and the single source
-of truth. It is the same clone `makepkg` populates from the PKGBUILD's
-`source=git+...`, so `just pkg` and the Docker builds do not each fetch their own
-copy.
+`.cache/ik_llama.cpp` is a depth-one bare clone of upstream `main` and the single source
+of truth. Cloning and fetching use `--depth=1 --single-branch --branch main`
+and disable tags. Existing full-history caches are replaced by a shallow clone;
+updates discard old cached history. Only the latest tip of `main` is supported.
+
+`just pkg` exports that same commit as a local source archive for makepkg,
+so its Git source handler cannot create a second full-history mirror. Package
+versions and Docker build numbers use the commit timestamp (package versions
+also include the short commit hash), without requiring tags or commit counts.
 
 Each image build runs `git archive <sha>` from that mirror into
 `.cache/docker/src`, handed to the Dockerfile as a named context. No network,
@@ -97,14 +102,13 @@ $ just check
 upstream main @ 1fddd12ba861  (18 hours ago -- New op: ggml_sum_rows_ext (#2132))
 
   cpu:  up to date
-  cuda: STALE at bbc7de47c1a2 (37 commits behind)
+  cuda: STALE at bbc7de47c1a2
 ```
 
-Builds skip themselves when the image already matches upstream. Override with `FORCE=1`, or pin a ref (branch, tag, or full SHA):
+Builds skip themselves when the image already matches upstream. Override with `FORCE=1`:
 
 ```bash
 FORCE=1 just docker cuda
-IK_LLAMA_REF=bbc7de47 just docker cuda
 ```
 
 `ccache` is mounted per variant, so bumping upstream a few commits recompiles a small slice rather than the whole tree. The LTO link still runs in full every time, because LTO is like that.
@@ -203,7 +207,7 @@ just pkg install
 `just pkg install` installs the existing package from `.cache/pkg` when available,
 or builds and installs it if missing. `just pkg` rebuilds the package.
 Packages land in `.cache/pkg`; makepkg work trees stay in `.cache/build`.
-The package shares the source mirror above, so it will not re-clone. Same
+The package uses an archive from the shared shallow clone, so it will not re-clone. Same
 architecture constraints apply, which is to say: it will not run on your laptop,
 your NAS, or that Xeon you were emotionally attached to in 2019.
 
