@@ -5,7 +5,7 @@
 : ${EXPERIMENTAL_FASTMTP:=0}
 pkgname=ik-llama.cpp-cuda-git
 _pkgname="ik_llama.cpp"
-pkgver=t0002.r1203.c069e89e1
+pkgver=1791358873.c069e89
 pkgrel=1
 pkgdesc="Port of Facebook's LLaMA model in C/C++ (with NVIDIA CUDA optimizations) - fork by ikawrakow"
 arch=(x86_64 armv7h aarch64)
