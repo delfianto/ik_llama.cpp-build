@@ -75,3 +75,33 @@ as a pinned opt-in ref rather than a growing patch file.
 
 The longer implementation sketch is kept beside this audit in
 [`moe-cache.md`](moe-cache.md).
+
+### 2026-10-08 follow-up: persistent pool merged upstream
+
+The persistent pool now has a merged implementation in
+[llama.cpp #29887](https://github.com/ggml-org/llama.cpp/pull/29887), extended to
+multiple GPUs by [#30112](https://github.com/ggml-org/llama.cpp/pull/30112).
+The final version divides one global cache budget among eligible GPUs; its
+cache misses upload experts before the current computation. This differs from
+the CPU-miss/async-promotion design in `moe-cache.md`.
+
+Adoption in IK is feasible through a manual source port, starting with CUDA and
+layer splitting. Neither upstream diff applies directly, and IK needs scheduler
+copy hooks, device mapping, fused/repacked MoE handling and lifecycle integration.
+See the [detailed adoption audit](moe-cache-30112-audit.md) against IK main at
+`67477b6e9b00`. No cache patch is enabled in these build recipes.
+
+The build source is now [our fork](https://github.com/delfianto/ik_llama.cpp).
+The [port plan](moe-cache-port-plan.md) uses the merged persistent pool as the
+first experiment; [model candidates](../experiments/moe-models.md) and a pinned
+download manifest live in `experiments/`. Inference implementation remains pending.
+
+## Fork experiment: persistent MoE decode cache
+
+The manual port is published on
+[`delfianto/ik_llama.cpp:moe-cache`](https://github.com/delfianto/ik_llama.cpp/tree/moe-cache).
+`moe-cache-v1.patch` is a backup of that source commit, not another automatic
+build patch. Select the branch with `IK_LLAMA_REF=moe-cache`.
+See [validated support and measurements](../experiments/moe-cache-results.md).
+V1 caches single-token decode; multi-token caching is deferred after failing
+its full-model numerical gate. The older `moe-cache.md` is a separate design.

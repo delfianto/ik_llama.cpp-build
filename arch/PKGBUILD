@@ -9,7 +9,7 @@ pkgver=1791358873.c069e89
 pkgrel=1
 pkgdesc="Port of Facebook's LLaMA model in C/C++ (with NVIDIA CUDA optimizations) - fork by ikawrakow"
 arch=(x86_64 armv7h aarch64)
-url='https://github.com/ikawrakow/ik_llama.cpp'
+url='https://github.com/delfianto/ik_llama.cpp'
 license=('MIT')
 depends=(
   cuda

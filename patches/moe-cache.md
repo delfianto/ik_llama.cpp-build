@@ -1,5 +1,11 @@
 # Technical implementation plan: Hybrid MoE VRAM Expert Cache for `ik_llama.cpp`
 
+Historical alternative design: CPU execution on misses with asynchronous VRAM
+promotion. The first experiment selected on 2026-10-08 instead follows the
+merged upstream persistent pool, which uploads misses before the current
+computation. Use the [current port plan](moe-cache-port-plan.md) for that work;
+this document remains a possible later experiment.
+
 ## 1. Executive design decision
 
 The implementation should **not** be a direct port of either the original `llama.cpp` experiment or thecodacus' fork.

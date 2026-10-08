@@ -38,7 +38,7 @@ group "default" {
 target "_common" {
   context    = "."
   dockerfile = "docker/Dockerfile"
-  # Upstream source, extracted from the local shallow bare clone by `just`.
+  # Fork source, extracted from the local shallow bare clone by `just`.
   contexts = {
     ikllama = ".cache/docker/src"
   }
@@ -50,7 +50,7 @@ target "_common" {
     IK_LLAMA_EXPERIMENTAL_FASTMTP = IK_LLAMA_EXPERIMENTAL_FASTMTP
   }
   labels = {
-    "org.opencontainers.image.source"   = "https://github.com/ikawrakow/ik_llama.cpp"
+    "org.opencontainers.image.source"   = "https://github.com/delfianto/ik_llama.cpp"
     "org.opencontainers.image.title"    = "ik_llama.cpp"
     "org.opencontainers.image.revision" = IK_LLAMA_SHA
     "org.opencontainers.image.fastmtp-patch" = IK_LLAMA_PATCH_SHA

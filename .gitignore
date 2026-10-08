@@ -1,5 +1,7 @@
 .cache/
 .env
+.venv/
+.ruff_cache/
 
 # Guard against makepkg being run directly; just routes these under .cache/.
 /src/

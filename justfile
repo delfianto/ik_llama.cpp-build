@@ -5,7 +5,8 @@
 # `just pkg` and the docker builds never clone twice.
 
 mirror := ".cache/ik_llama.cpp"
-upstream := "https://github.com/ikawrakow/ik_llama.cpp.git"
+source_url := "https://github.com/delfianto/ik_llama.cpp.git"
+source_page := "https://github.com/delfianto/ik_llama.cpp"
 srcdir := ".cache/docker/src"
 image := "ghcr.io/delfianto/ik_llama.cpp"
 fastmtp_patch := "patches/fastmtp-qwen38-d2t.patch"
@@ -13,47 +14,57 @@ arch_dir := "arch"
 arch_stage := ".cache/build/recipe"
 bake_file := "docker/bake.hcl"
 compose_file := "docker/compose.example.yml"
-ref := "main"
+ref := env("IK_LLAMA_REF", "main")
 force := env("FORCE", "0")
 experimental_fastmtp := env("EXPERIMENTAL_FASTMTP", "0")
 
 _default:
     @just --list --unsorted
 
-# Fetch only the latest main commit, replacing older full-history caches.
+# Check the experiment Python scripts with the locked development tools.
+check-python:
+    uv run --locked ruff check experiments
+    uv run --locked ruff format --check experiments
+    uv run --locked basedpyright
+
+# Fetch only the selected fork branch, replacing older full-history caches.
 fetch:
     #!/usr/bin/env bash
     set -euo pipefail
+    source_ref={{ quote(ref) }}
+    git check-ref-format --branch "$source_ref" >/dev/null
     mkdir -p "$(dirname "{{ mirror }}")"
     if [[ ! -d "{{ mirror }}" ]] || [[ $(git -C "{{ mirror }}" rev-parse --is-shallow-repository) != true ]]; then
         work=$(mktemp -d "{{ mirror }}.shallow.XXXXXX")
         trap 'rm -rf "$work"' EXIT
-        git clone --bare --depth=1 --single-branch --branch main --no-tags "{{ upstream }}" "$work"
+        git clone --bare --depth=1 --single-branch --branch "$source_ref" --no-tags "{{ source_url }}" "$work"
         rm -rf "{{ mirror }}"
         mv "$work" "{{ mirror }}"
     fi
-    git -C "{{ mirror }}" config remote.origin.fetch '+refs/heads/main:refs/heads/main'
+    git -C "{{ mirror }}" remote set-url origin "{{ source_url }}"
+    git -C "{{ mirror }}" config remote.origin.fetch "+refs/heads/$source_ref:refs/heads/$source_ref"
     git -C "{{ mirror }}" config remote.origin.tagOpt --no-tags
-    git -C "{{ mirror }}" fetch --depth=1 --no-tags --prune origin '+refs/heads/main:refs/heads/main'
-    git -C "{{ mirror }}" symbolic-ref HEAD refs/heads/main
+    git -C "{{ mirror }}" fetch --depth=1 --no-tags --prune origin "+refs/heads/$source_ref:refs/heads/$source_ref"
+    git -C "{{ mirror }}" symbolic-ref HEAD "refs/heads/$source_ref"
     while read -r name; do
-        [[ "$name" == refs/heads/main ]] || git -C "{{ mirror }}" update-ref -d "$name"
+        [[ "$name" == "refs/heads/$source_ref" ]] || git -C "{{ mirror }}" update-ref -d "$name"
     done < <(git -C "{{ mirror }}" for-each-ref --format='%(refname)')
     git -C "{{ mirror }}" reflog expire --expire=now --all
     git -C "{{ mirror }}" gc --prune=now --quiet
 
-# Report whether upstream has moved since each image was built.
+# Report whether the selected fork source differs from each image.
 check: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    source_ref={{ quote(ref) }}
+    sha=$(git -C "{{ mirror }}" rev-parse "$source_ref")
     case "{{ experimental_fastmtp }}" in
         0) patch_sha=disabled ;;
         1) patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1) ;;
         *) echo "EXPERIMENTAL_FASTMTP must be 0 or 1" >&2; exit 2 ;;
     esac
     desc=$(git -C "{{ mirror }}" log -1 --format='%cr -- %s' "$sha")
-    echo "upstream {{ ref }} @ ${sha:0:12}  ($desc)"
+    echo "fork $source_ref @ ${sha:0:12}  ($desc)"
     echo
     stale=0
     for v in cpu cuda; do
@@ -61,10 +72,14 @@ check: fetch
             --format '{{{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)
         built_patch=$(docker image inspect "{{ image }}:$v" \
             --format '{{{{ index .Config.Labels "org.opencontainers.image.fastmtp-patch" }}' 2>/dev/null || true)
+        built_source=$(docker image inspect "{{ image }}:$v" \
+            --format '{{{{ index .Config.Labels "org.opencontainers.image.source" }}' 2>/dev/null || true)
         if [[ -z "$built" ]]; then
             printf '  %-5s not built\n' "$v:"; stale=1
-        elif [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" ]]; then
+        elif [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" && "$built_source" == "{{ source_page }}" ]]; then
             printf '  %-5s up to date\n' "$v:"
+        elif [[ "$built_source" != "{{ source_page }}" ]]; then
+            printf '  %-5s source repository changed\n' "$v:"; stale=1
         elif [[ "$built" == "$sha" ]]; then
             printf '  %-5s FastMTP patch changed\n' "$v:"; stale=1
         else
@@ -87,11 +102,11 @@ _materialize sha:
     # applied to the named context and is none of our business.
     rm -f "{{ srcdir }}/.dockerignore"
 
-# Build one variant, skipping if it already matches upstream (FORCE=1 to override).
+# Build one variant, skipping if source and patch match (FORCE=1 to override).
 _build variant: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    sha=$(git -C "{{ mirror }}" rev-parse {{ quote(ref) }})
     case "{{ experimental_fastmtp }}" in
         0) patch_sha=disabled ;;
         1) patch_sha=$(sha256sum "{{ fastmtp_patch }}" | cut -d' ' -f1) ;;
@@ -101,7 +116,9 @@ _build variant: fetch
         --format '{{{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)
     built_patch=$(docker image inspect "{{ image }}:{{ variant }}" \
         --format '{{{{ index .Config.Labels "org.opencontainers.image.fastmtp-patch" }}' 2>/dev/null || true)
-    if [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" && "{{ force }}" != "1" ]]; then
+    built_source=$(docker image inspect "{{ image }}:{{ variant }}" \
+        --format '{{{{ index .Config.Labels "org.opencontainers.image.source" }}' 2>/dev/null || true)
+    if [[ "$built" == "$sha" && "$built_patch" == "$patch_sha" && "$built_source" == "{{ source_page }}" && "{{ force }}" != "1" ]]; then
         echo "==> {{ variant }}: already at ${sha:0:12} -- skipping (FORCE=1 to rebuild)"
         exit 0
     fi
@@ -145,18 +162,18 @@ _stage_arch:
     ln -sfn "$recipe_root/{{ arch_dir }}/llama.cpp.service" "{{ arch_stage }}/llama.cpp.service"
     ln -sfn "$recipe_root/{{ fastmtp_patch }}" "{{ arch_stage }}/fastmtp-qwen38-d2t.patch"
 
-# Export main for makepkg without invoking its full-history Git source handler.
+# Export the selected branch for makepkg without its full-history Git source handler.
 _archive_arch: fetch _stage_arch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{ mirror }}" rev-parse main)
+    sha=$(git -C "{{ mirror }}" rev-parse {{ quote(ref) }})
     git -C "{{ mirror }}" archive --prefix=ik_llama.cpp/ "$sha" > .cache/ik_llama.cpp.tar
     git -C "{{ mirror }}" show -s --format='%ct %h' "$sha" > .cache/source-version
     ln -sfn "$PWD/.cache/ik_llama.cpp.tar" "{{ arch_stage }}/ik_llama.cpp.tar"
     ln -sfn "$PWD/.cache/source-version" "{{ arch_stage }}/source-version"
 
 # Build the Arch package, or install an existing package (builds if missing).
-pkg action="build": _stage_arch
+pkg action="build": fetch _stage_arch
     #!/usr/bin/env bash
     set -euo pipefail
     recipe_root="$PWD"
@@ -170,13 +187,15 @@ pkg action="build": _stage_arch
     export SRCDEST="$recipe_root/.cache"
     export EXPERIMENTAL_FASTMTP="{{ experimental_fastmtp }}"
     if [[ {{ quote(action) }} == install ]]; then
+        selected_version=$(git -C "{{ mirror }}" show -s --format='%ct.%h' {{ quote(ref) }})
+        recipe_version=$(makepkg -D "{{ arch_stage }}" --printsrcinfo | awk '$1 == "pkgver" { print $3; exit }')
         package_list=$(makepkg -D "{{ arch_stage }}" --packagelist)
         mapfile -t packages <<< "$package_list"
         all_built=1
         for package in "${packages[@]}"; do
             [[ -f "$package" ]] || all_built=0
         done
-        if (( all_built )); then
+        if (( all_built )) && [[ "$recipe_version" == "$selected_version" ]]; then
             sudo pacman -U --noconfirm "${packages[@]}"
             exit 0
         fi
@@ -195,7 +214,7 @@ srcinfo:
 patch-check: fetch
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    sha=$(git -C "{{ mirror }}" rev-parse {{ quote(ref) }})
     mkdir -p .cache/docker
     work=$(mktemp -d .cache/docker/patch-check.XXXXXX)
     trap 'rm -rf "$work"' EXIT
@@ -218,7 +237,7 @@ doctor:
 verify: doctor patch-check
     #!/usr/bin/env bash
     set -euo pipefail
-    sha=$(git -C "{{ mirror }}" rev-parse "{{ ref }}")
+    sha=$(git -C "{{ mirror }}" rev-parse {{ quote(ref) }})
     just _materialize "$sha"
     IK_LLAMA_SHA="$sha" \
     IK_LLAMA_BUILD_NUMBER=$(git -C "{{ mirror }}" show -s --format=%ct "$sha") \

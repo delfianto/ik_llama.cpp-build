@@ -1,6 +1,6 @@
 # ik_llama.cpp Build Recipe
 
-Build scripts for [`ik_llama.cpp`](https://github.com/ikawrakow/ik_llama.cpp), compiled for exactly one machine: this one. Out the other end come an Arch package and two Docker images, all from a single upstream clone.
+Build scripts for [our experimental `ik_llama.cpp` fork](https://github.com/delfianto/ik_llama.cpp), compiled for exactly one machine: this one. Out the other end come an Arch package and two Docker images, all from a single source clone. The fork follows [ikawrakow's project](https://github.com/ikawrakow/ik_llama.cpp).
 
 Nothing here is portable, and that is the entire point. If you want binaries that run anywhere, upstream ships those and they are lovely. These are not those.
 
@@ -37,7 +37,7 @@ So: real gains, narrow scope, no magic. Compiling `-march=native` has never resc
 
 ```bash
 just            # list recipes
-just check      # has upstream moved since each image was built?
+just check      # does each image match the selected fork source?
 just docker cpu        # build ghcr.io/delfianto/ik_llama.cpp:cpu
 just docker cuda       # build ghcr.io/delfianto/ik_llama.cpp:cuda
 just docker        # both
@@ -75,12 +75,24 @@ A Zen 5 + LTO + CUDA build on a shared GitHub runner took the better part of for
 
 ### One clone, shared with makepkg
 
-`.cache/ik_llama.cpp` is a depth-one bare clone of upstream `main` and the single source
+`.cache/ik_llama.cpp` is a depth-one bare clone of the fork's `main` and the single source
 of truth. Cloning and fetching use `--depth=1 --single-branch --branch main`
 and disable tags. Existing full-history caches are replaced by a shallow clone;
-updates discard old cached history. Only the latest tip of `main` is supported.
+updates discard old cached history. Builds use the latest tip of the selected branch.
+Set `IK_LLAMA_REF` to test another branch in the fork; it must be a branch name,
+not a tag or commit SHA. Docker and Arch use the same selection:
 
-`just pkg` exports that same commit as a local source archive for makepkg,
+```bash
+IK_LLAMA_REF=moe-cache just docker cuda
+IK_LLAMA_REF=moe-cache just pkg
+```
+
+That branch contains the experimental, single-token CUDA MoE cache. Use
+`--cpu-moe -no-fug --moe-cache-mib 1024` to keep eligible experts in RAM and
+allocate a 1 GiB total cache. See [support limits and measurements](experiments/moe-cache-results.md)
+and the [port plan](patches/moe-cache-port-plan.md).
+
+`just pkg` exports that same selected commit as a local source archive for makepkg,
 so its Git source handler cannot create a second full-history mirror. Package
 versions and Docker build numbers use the commit timestamp (package versions
 also include the short commit hash), without requiring tags or commit counts.
@@ -99,7 +111,7 @@ Every image records its commit as an `org.opencontainers.image.revision` label, 
 
 ```console
 $ just check
-upstream main @ 1fddd12ba861  (18 hours ago -- New op: ggml_sum_rows_ext (#2132))
+fork main @ 1fddd12ba861  (18 hours ago -- New op: ggml_sum_rows_ext (#2132))
 
   cpu:  up to date
   cuda: STALE at bbc7de47c1a2

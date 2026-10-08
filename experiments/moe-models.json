@@ -1,0 +1,82 @@
+{
+  "researched_at": "2026-10-08",
+  "status": "granite_and_qwen3_downloaded; remaining_candidates_unvalidated",
+  "models": [
+    {
+      "id": "granite-3.1-3b-a800m",
+      "original_repo": "ibm-granite/granite-3.1-3b-a800m-instruct",
+      "gguf_repo": "bartowski/granite-3.1-3b-a800m-instruct-GGUF",
+      "revision": "be9a36f042806cb586bc65556c527079782b78e0",
+      "filename": "granite-3.1-3b-a800m-instruct-Q4_K_M.gguf",
+      "approx_decimal_gb": 2.02,
+      "routed_experts": 40,
+      "active_routed_experts": 8,
+      "downloaded_bytes": 2016888384,
+      "sha256": "48e0edcd578fd4462f26127f04c651d0e650741110185297741089aea01a82b3"
+    },
+    {
+      "id": "qwen3-30b-a3b-2507",
+      "original_repo": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+      "gguf_repo": "bartowski/Qwen_Qwen3-30B-A3B-Instruct-2507-GGUF",
+      "revision": "6c6e8692f43e4ca663f7ece8229a1361090d3a4c",
+      "filename": "Qwen_Qwen3-30B-A3B-Instruct-2507-Q4_0.gguf",
+      "approx_decimal_gb": 17.63,
+      "routed_experts": 128,
+      "active_routed_experts": 8,
+      "downloaded_bytes": 17631645696,
+      "sha256": "d73126b2647928f5279e9dda48978ccc7d17128f36a93f4410a55222aebdc566"
+    },
+    {
+      "id": "deepseek-coder-v2-lite",
+      "original_repo": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+      "gguf_repo": "bartowski/DeepSeek-Coder-V2-Lite-Instruct-GGUF",
+      "revision": "8f248fa2072348f77a8bc37754e470de1f61866e",
+      "filename": "DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M.gguf",
+      "approx_decimal_gb": 10.36,
+      "routed_experts": 64,
+      "active_routed_experts": 6,
+      "shared_experts": 2
+    },
+    {
+      "id": "gpt-oss-20b",
+      "original_repo": "openai/gpt-oss-20b",
+      "gguf_repo": "ggml-org/gpt-oss-20b-GGUF",
+      "revision": "ef9b12f2ff56c69cf32153a02784e7a3c88bf524",
+      "filename": "gpt-oss-20b-MXFP4.gguf",
+      "approx_decimal_gb": 12.11,
+      "routed_experts": 32,
+      "active_routed_experts": 4
+    },
+    {
+      "id": "lfm2.5-8b-a1b",
+      "original_repo": "LiquidAI/LFM2.5-8B-A1B",
+      "gguf_repo": "LiquidAI/LFM2.5-8B-A1B-GGUF",
+      "revision": "49c14831707011e64d70b2ebd8462ba08d608434",
+      "filename": "LFM2.5-8B-A1B-Q4_0.gguf",
+      "approx_decimal_gb": 4.84,
+      "routed_experts": 32,
+      "active_routed_experts": 4
+    },
+    {
+      "id": "glm-4.7-flash",
+      "original_repo": "zai-org/GLM-4.7-Flash",
+      "gguf_repo": "bartowski/zai-org_GLM-4.7-Flash-GGUF",
+      "revision": "464d07505b441959737cd04d900f047469614c8d",
+      "filename": "zai-org_GLM-4.7-Flash-Q4_0.gguf",
+      "approx_decimal_gb": 17.39,
+      "routed_experts": 64,
+      "active_routed_experts": 4,
+      "shared_experts": 1
+    },
+    {
+      "id": "qwen3.5-35b-a3b",
+      "original_repo": "Qwen/Qwen3.5-35B-A3B",
+      "gguf_repo": "bartowski/Qwen_Qwen3.5-35B-A3B-GGUF",
+      "revision": "3d2a22d4eb631b9c8fd2be94599dc2fd84b4a595",
+      "filename": "Qwen_Qwen3.5-35B-A3B-Q4_0.gguf",
+      "approx_decimal_gb": 20.84,
+      "routed_experts": 256,
+      "active_routed_experts": 8
+    }
+  ]
+}

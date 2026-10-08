@@ -1,0 +1,26 @@
+[project]
+name = "ik-llama-experiments"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["matplotlib>=3.10,<4"]
+
+[dependency-groups]
+dev = ["ruff>=0.16,<0.17", "basedpyright>=1.40,<2"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+include = ["experiments/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "EXE", "PLW1510"]
+
+[tool.basedpyright]
+include = ["experiments"]
+exclude = ["experiments/results", "**/__pycache__"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+reportMissingParameterType = "error"
+reportMissingTypeArgument = "error"
