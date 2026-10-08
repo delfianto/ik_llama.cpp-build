@@ -27,6 +27,10 @@ check-python:
     uv run --locked ruff format --check experiments
     uv run --locked basedpyright
 
+# Fast-forward the remote fork's main from upstream IK; requires authenticated gh.
+sync-upstream:
+    gh repo sync delfianto/ik_llama.cpp --source ikawrakow/ik_llama.cpp --branch main
+
 # Fetch only the selected fork branch, replacing older full-history caches.
 fetch:
     #!/usr/bin/env bash

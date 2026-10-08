@@ -37,6 +37,7 @@ So: real gains, narrow scope, no magic. Compiling `-march=native` has never resc
 
 ```bash
 just            # list recipes
+just sync-upstream # sync the fork's main from ikawrakow/ik_llama.cpp
 just check      # does each image match the selected fork source?
 just docker cpu        # build ghcr.io/delfianto/ik_llama.cpp:cpu
 just docker cuda       # build ghcr.io/delfianto/ik_llama.cpp:cuda
@@ -106,6 +107,11 @@ come from the commit — so an unchanged commit re-extracts identically and the
 Because the source arrives as a named context, a bare `docker build .` no longer works. Use `just`.
 
 ### Tracking upstream
+
+Run `just sync-upstream` to fast-forward the fork's remote `main` from
+`ikawrakow/ik_llama.cpp`. It requires the GitHub CLI (`gh`) authenticated with
+write access to the fork and refuses divergent history. The command always targets
+`main`, regardless of `IK_LLAMA_REF`; subsequent builds fetch the updated fork.
 
 Every image records its commit as an `org.opencontainers.image.revision` label, so it is self-describing and there is no stamp file waiting to quietly desynchronize. `just check` fetches the mirror and diffs upstream against that label:
 
