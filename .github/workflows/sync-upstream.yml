@@ -1,0 +1,26 @@
+name: Sync IK fork
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sync-ik-fork
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'delfianto/ik_llama.cpp-build'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Sync fork main from upstream IK
+        env:
+          GH_TOKEN: ${{ secrets.IK_FORK_SYNC_TOKEN }}
+        run: |
+          gh repo sync delfianto/ik_llama.cpp \
+            --source ikawrakow/ik_llama.cpp \
+            --branch main

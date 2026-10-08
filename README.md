@@ -113,6 +113,14 @@ Run `just sync-upstream` to fast-forward the fork's remote `main` from
 write access to the fork and refuses divergent history. The command always targets
 `main`, regardless of `IK_LLAMA_REF`; subsequent builds fetch the updated fork.
 
+The [Sync IK fork workflow](.github/workflows/sync-upstream.yml) runs the same
+sync every six hours, at 00:17, 06:17, 12:17 and 18:17 UTC. It also supports
+manual runs from the Actions tab. Set this build repo's `IK_FORK_SYNC_TOKEN`
+Actions secret to a fine-grained PAT for `delfianto/ik_llama.cpp`, with Contents
+and Workflows write permissions, and replace the secret when the token expires.
+GitHub may delay scheduled runs or disable the schedule after 60 days without
+repository activity.
+
 Every image records its commit as an `org.opencontainers.image.revision` label, so it is self-describing and there is no stamp file waiting to quietly desynchronize. `just check` fetches the mirror and diffs upstream against that label:
 
 ```console
